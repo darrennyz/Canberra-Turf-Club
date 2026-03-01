@@ -15,7 +15,7 @@ export default function RacePage() {
   const router = useRouter();
   const supabase = createClient();
 
-  const [myPlayer, setMyPlayer] = useState<{ id: string; name: string } | null>(null);
+  const [myPlayer, setMyPlayer] = useState<{ id: string; name: string; selectedSuit?: Suit } | null>(null);
   const [round, setRound] = useState<Round | null>(null);
   const [positions, setPositions] = useState<Record<Suit, number>>({ S: 0, H: 0, D: 0, C: 0 });
   const [gateRevealed, setGateRevealed] = useState<boolean[]>([false, false, false, false, false]);
@@ -31,7 +31,8 @@ export default function RacePage() {
   useEffect(() => {
     const stored = localStorage.getItem('ctc_player');
     if (!stored) { router.push('/'); return; }
-    setMyPlayer(JSON.parse(stored));
+    const p = JSON.parse(stored);
+    setMyPlayer(p);
   }, []);
 
   const scheduleEvents = useCallback((events: RaceEvent[], raceStartAt: number) => {
@@ -55,7 +56,7 @@ export default function RacePage() {
           case 'TURN_MOVE_FORWARD':
             setMovingHorse(event.suit!);
             setPositions(prev => ({ ...prev, [event.suit!]: event.newPos! }));
-            setRaceStatus(`${SUIT_NAMES[event.suit!]} moves to ${event.newPos!}`);
+            setRaceStatus(`${SUIT_NAMES[event.suit!]} advances → ${event.newPos!}`);
             break;
           case 'GATE_REVEAL':
             setGateRevealed(prev => {
@@ -64,13 +65,13 @@ export default function RacePage() {
               return next;
             });
             setHighlightGate(event.gateIndex!);
-            setRaceStatus(`Gate ${event.gateIndex! + 1} reveals: ${event.card!.rank}${SUIT_SYMBOLS[event.card!.suit]}`);
+            setRaceStatus(`Gate ${event.gateIndex! + 1}: ${event.card!.rank}${SUIT_SYMBOLS[event.card!.suit]}`);
             setTimeout(() => setHighlightGate(null), 1500);
             break;
           case 'GATE_MOVE_BACK':
             setMovingHorse(event.suit!);
             setPositions(prev => ({ ...prev, [event.suit!]: event.newPos! }));
-            setRaceStatus(`${SUIT_NAMES[event.suit!]} moves BACK to ${event.newPos!}`);
+            setRaceStatus(`${SUIT_NAMES[event.suit!]} ← back to ${event.newPos!}`);
             break;
           case 'RACE_FINISHED':
             setWinner(event.winningSuit!);
@@ -79,7 +80,6 @@ export default function RacePage() {
             }
             setRaceStatus(`🏆 ${SUIT_NAMES[event.winningSuit!]} WINS!`);
             setMovingHorse(null);
-            // Mark session as VICTORY on server (idempotent — any client can call)
             fetch('/api/game/finish', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -102,6 +102,20 @@ export default function RacePage() {
       if (!sessionData.current_round_id) return;
 
       setSessionTracks(sessionData.tracks);
+
+      // Fetch current player's selected suit
+      const stored = localStorage.getItem('ctc_player');
+      if (stored) {
+        const p = JSON.parse(stored);
+        const { data: playerData } = await supabase
+          .from('players')
+          .select('selected_suit')
+          .eq('id', p.id)
+          .maybeSingle();
+        if (playerData?.selected_suit) {
+          setMyPlayer(prev => prev ? { ...prev, selectedSuit: playerData.selected_suit as Suit } : prev);
+        }
+      }
 
       const { data: roundData } = await supabase
         .from('rounds')
@@ -142,50 +156,71 @@ export default function RacePage() {
   const gateThresholds = round ? round.gate_thresholds : [];
 
   return (
-    <div className="min-h-screen p-4 max-w-3xl mx-auto relative">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold pixel-text" style={{ color: '#1b4332' }}>RACE</h1>
+    /* Use 100dvh so the layout respects the browser chrome / address bar on mobile */
+    <div
+      className="flex flex-col overflow-hidden w-full"
+      style={{ height: '100dvh', maxWidth: 600, margin: '0 auto' }}
+    >
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between px-3 pt-2 pb-1 shrink-0">
+        <h1 className="text-base font-bold pixel-text" style={{ color: '#1b4332' }}>🏇 RACE</h1>
         {winner && (
-          <div className="font-bold pixel-text text-lg animate-pulse" style={{ color: '#c9a627' }}>
-            {SUIT_NAMES[winner]} WINS!
+          <div className="font-bold pixel-text text-sm animate-pulse" style={{ color: '#c9a627' }}>
+            {SUIT_NAMES[winner]} WINS! 🏆
           </div>
         )}
       </div>
 
-      {/* Status */}
-      <div className="bg-green-50 border border-green-400 rounded-lg px-4 py-2 mb-4 text-center text-green-800 text-sm pixel-text">
-        {raceStatus}
-      </div>
-
-      {/* Card reveal */}
-      <div className="flex justify-center mb-4">
-        <div className="flex flex-col items-center gap-2">
-          <div className="text-xs text-green-700 pixel-text">CURRENT DRAW</div>
-          <CardDisplay card={showCard ? currentCard : null} faceDown={!showCard || !currentCard} />
+      {/* ── Status bar ── */}
+      <div className="px-3 pb-2 shrink-0">
+        <div
+          className="rounded-lg px-3 py-1.5 text-center text-xs pixel-text"
+          style={{ background: '#e8f5ea', border: '1px solid #52b788', color: '#1b4332' }}
+        >
+          {raceStatus}
         </div>
       </div>
 
-      {/* Gate cards */}
-      {round && (
-        <div className="mb-4">
-          <GateCardsDisplay
-            gateCards={round.gate_cards}
-            gateRevealed={gateRevealed}
-            gateThresholds={gateThresholds}
-            highlightIndex={highlightGate ?? undefined}
-          />
+      {/* ── Card + Gate Cards (side by side) ── */}
+      <div className="flex items-center gap-3 px-3 pb-2 shrink-0">
+        {/* Current draw card */}
+        <div className="flex flex-col items-center gap-0.5 shrink-0">
+          <div className="text-xs text-green-700" style={{ fontSize: 9 }}>DRAW</div>
+          <CardDisplay card={showCard ? currentCard : null} faceDown={!showCard || !currentCard} small />
         </div>
-      )}
 
-      {/* Horse track */}
-      <HorseTrack
-        positions={positions}
-        tracks={sessionTracks}
-        winningSuit={winner}
-        movingHorse={movingHorse}
-      />
+        {/* Divider */}
+        <div className="w-px self-stretch" style={{ background: '#52b788', opacity: 0.4 }} />
 
-      {/* Chat */}
+        {/* Gate cards */}
+        {round && (
+          <div className="flex-1">
+            <div className="text-xs text-green-700 mb-0.5 text-center" style={{ fontSize: 9 }}>GATE CARDS</div>
+            <GateCardsDisplay
+              gateCards={round.gate_cards}
+              gateRevealed={gateRevealed}
+              gateThresholds={gateThresholds}
+              highlightIndex={highlightGate ?? undefined}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* ── Horse Track (fills remaining space) ── */}
+      <div className="flex-1 min-h-0 px-3 pb-2">
+        <HorseTrack
+          positions={positions}
+          tracks={sessionTracks}
+          winningSuit={winner}
+          movingHorse={movingHorse}
+          myHorseSuit={myPlayer?.selectedSuit ?? null}
+        />
+      </div>
+
+      {/* Spacer so chat input doesn't cover the last lane */}
+      <div className="shrink-0" style={{ height: 56 }} />
+
+      {/* ── Chat ── */}
       {myPlayer && (
         <ChatOverlay
           sessionCode={code}
