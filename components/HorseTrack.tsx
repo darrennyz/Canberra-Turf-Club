@@ -6,22 +6,28 @@ interface Props {
   positions: Record<Suit, number>;
   tracks: number;
   winningSuit?: Suit | null;
-  movingHorse?: Suit | null;
+  movingHorse?: Suit | null;  // moving forward
+  backingHorse?: Suit | null; // moving backward (gate penalty)
   myHorseSuit?: Suit | null;
 }
 
 const SUIT_ORDER: Suit[] = ['S', 'H', 'D', 'C'];
 
-export default function HorseTrack({ positions, tracks, winningSuit, movingHorse, myHorseSuit }: Props) {
+export default function HorseTrack({ positions, tracks, winningSuit, movingHorse, backingHorse, myHorseSuit }: Props) {
   return (
     <div className="w-full h-full flex flex-col gap-1">
       {SUIT_ORDER.map(suit => {
         const pos = positions[suit] ?? 0;
         const pct = Math.min((pos / tracks) * 100, 100);
         const isWinner = winningSuit === suit;
-        const isMoving = movingHorse === suit;
+        const isMovingForward = movingHorse === suit;
+        const isMovingBack = backingHorse === suit;
+        const isMoving = isMovingForward || isMovingBack;
         const isMyHorse = myHorseSuit === suit;
         const isRed = suit === 'H' || suit === 'D';
+
+        // Face right when moving forward or idle; face left only when backing up
+        const facingRight = !isMovingBack;
 
         return (
           <div
@@ -61,7 +67,13 @@ export default function HorseTrack({ positions, tracks, winningSuit, movingHorse
                   ))}
                 </div>
 
-                {/* Horse emoji — flipped to face right */}
+                {/*
+                  TWO-LAYER trick to prevent transform conflict:
+                  - Outer div: handles scaleX flip (direction). CSS animations
+                    would overwrite transform on the same element, so we isolate it here.
+                  - Inner span: handles the bounce animation via CSS class.
+                    Its translateY never interferes with the outer scaleX.
+                */}
                 <div
                   className="absolute"
                   style={{
@@ -72,18 +84,23 @@ export default function HorseTrack({ positions, tracks, winningSuit, movingHorse
                     transition: isMoving ? 'left 0.5s ease-out' : undefined,
                   }}
                 >
-                  <span
-                    className={`select-none ${isMoving ? 'horse-galloping' : ''} ${isWinner ? 'celebrating' : ''}`}
+                  {/* Flip wrapper — scaleX only, no animation here */}
+                  <div
                     style={{
-                      fontSize: 28,
-                      lineHeight: 1,
                       display: 'inline-block',
-                      transform: 'scaleX(-1)', /* flip to face right */
+                      transform: facingRight ? 'scaleX(-1)' : 'scaleX(1)',
+                      transition: 'transform 0.15s',
                       filter: isMyHorse ? 'drop-shadow(0 0 4px #c9a627)' : undefined,
                     }}
                   >
-                    🏇
-                  </span>
+                    {/* Bounce animation wrapper — translateY only, no scaleX here */}
+                    <span
+                      className={`select-none ${isMoving ? 'horse-galloping' : ''} ${isWinner ? 'celebrating' : ''}`}
+                      style={{ fontSize: 28, lineHeight: 1, display: 'inline-block' }}
+                    >
+                      🏇
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -96,7 +113,7 @@ export default function HorseTrack({ positions, tracks, winningSuit, movingHorse
               </div>
             </div>
 
-            {/* MY HORSE banner on the right edge */}
+            {/* MY BET badge */}
             {isMyHorse && (
               <div
                 className="absolute top-0 right-0 px-1 text-xs font-bold rounded-bl"

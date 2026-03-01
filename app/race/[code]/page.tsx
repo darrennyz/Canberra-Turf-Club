@@ -21,12 +21,43 @@ export default function RacePage() {
   const [gateRevealed, setGateRevealed] = useState<boolean[]>([false, false, false, false, false]);
   const [currentCard, setCurrentCard] = useState<Card | null>(null);
   const [showCard, setShowCard] = useState(false);
-  const [movingHorse, setMovingHorse] = useState<Suit | null>(null);
+  const [movingHorse, setMovingHorse] = useState<Suit | null>(null);   // forward
+  const [backingHorse, setBackingHorse] = useState<Suit | null>(null); // backward
   const [highlightGate, setHighlightGate] = useState<number | null>(null);
   const [winner, setWinner] = useState<Suit | null>(null);
   const [raceStatus, setRaceStatus] = useState('Race starting...');
   const [sessionTracks, setSessionTracks] = useState(12);
+
   const timersRef = useRef<NodeJS.Timeout[]>([]);
+
+  // ── Music ──────────────────────────────────────────────────────────────────
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const audio = new Audio('/race-music.mp3');
+    audio.loop = true;
+    audio.volume = 0.6;
+    audioRef.current = audio;
+    return () => {
+      audio.pause();
+      audio.src = '';
+    };
+  }, []);
+
+  const startMusic = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = 0;
+    audio.play().catch(() => {/* autoplay may be blocked until user gesture */});
+  }, []);
+
+  const stopMusic = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.pause();
+    audio.currentTime = 0;
+  }, []);
+  // ───────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const stored = localStorage.getItem('ctc_player');
@@ -41,6 +72,11 @@ export default function RacePage() {
 
     const now = Date.now();
 
+    // Find the first event in the future to trigger music start
+    const firstFutureDelay = Math.max(0, raceStartAt - now);
+    const musicTimer = setTimeout(startMusic, firstFutureDelay);
+    timersRef.current.push(musicTimer);
+
     events.forEach(event => {
       const delay = raceStartAt + event.tOffset - now;
       if (delay < -5000) return;
@@ -51,13 +87,19 @@ export default function RacePage() {
             setCurrentCard(event.card!);
             setShowCard(true);
             setMovingHorse(null);
+            setBackingHorse(null);
             setRaceStatus(`Drawing: ${event.card!.rank}${SUIT_SYMBOLS[event.card!.suit]}`);
             break;
+
           case 'TURN_MOVE_FORWARD':
+            setBackingHorse(null);
             setMovingHorse(event.suit!);
             setPositions(prev => ({ ...prev, [event.suit!]: event.newPos! }));
             setRaceStatus(`${SUIT_NAMES[event.suit!]} advances → ${event.newPos!}`);
+            // Clear forward indicator after transition
+            setTimeout(() => setMovingHorse(s => s === event.suit! ? null : s), 600);
             break;
+
           case 'GATE_REVEAL':
             setGateRevealed(prev => {
               const next = [...prev];
@@ -68,11 +110,16 @@ export default function RacePage() {
             setRaceStatus(`Gate ${event.gateIndex! + 1}: ${event.card!.rank}${SUIT_SYMBOLS[event.card!.suit]}`);
             setTimeout(() => setHighlightGate(null), 1500);
             break;
+
           case 'GATE_MOVE_BACK':
-            setMovingHorse(event.suit!);
+            setMovingHorse(null);
+            setBackingHorse(event.suit!);
             setPositions(prev => ({ ...prev, [event.suit!]: event.newPos! }));
             setRaceStatus(`${SUIT_NAMES[event.suit!]} ← back to ${event.newPos!}`);
+            // Clear backing indicator after transition
+            setTimeout(() => setBackingHorse(s => s === event.suit! ? null : s), 700);
             break;
+
           case 'RACE_FINISHED':
             setWinner(event.winningSuit!);
             if (event.finalPositions) {
@@ -80,6 +127,8 @@ export default function RacePage() {
             }
             setRaceStatus(`🏆 ${SUIT_NAMES[event.winningSuit!]} WINS!`);
             setMovingHorse(null);
+            setBackingHorse(null);
+            stopMusic(); // ← stop music when race ends
             fetch('/api/game/finish', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -92,7 +141,7 @@ export default function RacePage() {
 
       timersRef.current.push(t);
     });
-  }, [code, router]);
+  }, [code, router, startMusic, stopMusic]);
 
   useEffect(() => {
     const load = async () => {
@@ -150,13 +199,13 @@ export default function RacePage() {
     return () => {
       supabase.removeChannel(sessionSub);
       timersRef.current.forEach(t => clearTimeout(t));
+      stopMusic();
     };
-  }, [code, scheduleEvents]);
+  }, [code, scheduleEvents, stopMusic]);
 
   const gateThresholds = round ? round.gate_thresholds : [];
 
   return (
-    /* Use 100dvh so the layout respects the browser chrome / address bar on mobile */
     <div
       className="flex flex-col overflow-hidden w-full"
       style={{ height: '100dvh', maxWidth: 600, margin: '0 auto' }}
@@ -183,19 +232,16 @@ export default function RacePage() {
 
       {/* ── Card + Gate Cards (side by side) ── */}
       <div className="flex items-center gap-3 px-3 pb-2 shrink-0">
-        {/* Current draw card */}
         <div className="flex flex-col items-center gap-0.5 shrink-0">
-          <div className="text-xs text-green-700" style={{ fontSize: 9 }}>DRAW</div>
+          <div className="text-green-700 text-center" style={{ fontSize: 9 }}>DRAW</div>
           <CardDisplay card={showCard ? currentCard : null} faceDown={!showCard || !currentCard} small />
         </div>
 
-        {/* Divider */}
         <div className="w-px self-stretch" style={{ background: '#52b788', opacity: 0.4 }} />
 
-        {/* Gate cards */}
         {round && (
           <div className="flex-1">
-            <div className="text-xs text-green-700 mb-0.5 text-center" style={{ fontSize: 9 }}>GATE CARDS</div>
+            <div className="text-green-700 mb-0.5 text-center" style={{ fontSize: 9 }}>GATE CARDS</div>
             <GateCardsDisplay
               gateCards={round.gate_cards}
               gateRevealed={gateRevealed}
@@ -206,18 +252,19 @@ export default function RacePage() {
         )}
       </div>
 
-      {/* ── Horse Track (fills remaining space) ── */}
+      {/* ── Horse Track ── */}
       <div className="flex-1 min-h-0 px-3 pb-2">
         <HorseTrack
           positions={positions}
           tracks={sessionTracks}
           winningSuit={winner}
           movingHorse={movingHorse}
+          backingHorse={backingHorse}
           myHorseSuit={myPlayer?.selectedSuit ?? null}
         />
       </div>
 
-      {/* Spacer so chat input doesn't cover the last lane */}
+      {/* Spacer so chat doesn't cover last lane */}
       <div className="shrink-0" style={{ height: 56 }} />
 
       {/* ── Chat ── */}
