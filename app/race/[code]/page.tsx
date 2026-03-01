@@ -129,7 +129,7 @@ export default function RacePage() {
       }, payload => {
         const updated = payload.new as Session;
         if (updated.state === 'VICTORY') router.push(`/victory/${code}`);
-        if (updated.state === 'ENDED') router.push('/');
+        if (updated.state === 'ENDED') router.push(`/settlement?code=${code}`);
       })
       .subscribe();
 
@@ -144,23 +144,23 @@ export default function RacePage() {
   return (
     <div className="min-h-screen p-4 max-w-3xl mx-auto relative">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold text-yellow-400 pixel-text">RACE</h1>
+        <h1 className="text-xl font-bold pixel-text" style={{ color: '#1b4332' }}>RACE</h1>
         {winner && (
-          <div className="text-green-400 font-bold pixel-text text-lg animate-pulse">
+          <div className="font-bold pixel-text text-lg animate-pulse" style={{ color: '#c9a627' }}>
             {SUIT_NAMES[winner]} WINS!
           </div>
         )}
       </div>
 
       {/* Status */}
-      <div className="bg-purple-900/50 border border-purple-600 rounded-lg px-4 py-2 mb-4 text-center text-purple-200 text-sm pixel-text">
+      <div className="bg-green-50 border border-green-400 rounded-lg px-4 py-2 mb-4 text-center text-green-800 text-sm pixel-text">
         {raceStatus}
       </div>
 
       {/* Card reveal */}
       <div className="flex justify-center mb-4">
         <div className="flex flex-col items-center gap-2">
-          <div className="text-xs text-purple-400 pixel-text">CURRENT DRAW</div>
+          <div className="text-xs text-green-700 pixel-text">CURRENT DRAW</div>
           <CardDisplay card={showCard ? currentCard : null} faceDown={!showCard || !currentCard} />
         </div>
       </div>

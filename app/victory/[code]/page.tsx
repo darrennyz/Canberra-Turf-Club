@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { Round, Session, Suit, Player } from '@/lib/types';
-import PixelHorse from '@/components/PixelHorse';
 import { SUIT_NAMES, SUIT_SYMBOLS } from '@/lib/gameLogic';
 
 export default function VictoryPage() {
@@ -47,7 +46,7 @@ export default function VictoryPage() {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sessions' }, payload => {
         const updated = payload.new as Session;
         if (updated.state === 'LOBBY') router.push(`/lobby/${code}`);
-        if (updated.state === 'ENDED') router.push('/');
+        if (updated.state === 'ENDED') router.push(`/settlement?code=${code}`);
       })
       .subscribe();
 
@@ -73,14 +72,16 @@ export default function VictoryPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionCode: code, playerId: myPlayer.id }),
     });
-    const data = await res.json();
     if (res.ok) {
-      localStorage.setItem('ctc_settlement', JSON.stringify(data.settlement));
-      router.push('/settlement');
+      router.push(`/settlement?code=${code}`);
     }
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="text-yellow-400 pixel-text">Loading...</div></div>;
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-xl pixel-text" style={{ color: '#1b4332' }}>Loading...</div>
+    </div>
+  );
 
   const isMaster = session?.master_player_id === myPlayer?.id;
   const winningSuit = round?.winning_suit_final as Suit | null;
@@ -97,38 +98,43 @@ export default function VictoryPage() {
         {winningSuit && (
           <>
             <div className="flex justify-center mb-2">
-              <PixelHorse suit={winningSuit} size={80} celebrating />
+              <span
+                className="celebrating inline-block select-none"
+                style={{ fontSize: 80, lineHeight: 1 }}
+              >
+                🏇
+              </span>
             </div>
-            <h1 className="text-4xl font-bold text-yellow-400 pixel-text mb-1">
+            <h1 className="text-4xl font-bold pixel-text mb-1" style={{ color: '#1b4332' }}>
               {SUIT_SYMBOLS[winningSuit]} {SUIT_NAMES[winningSuit].toUpperCase()} WINS!
             </h1>
           </>
         )}
-        <div className="text-purple-300 text-lg">Total Pool: <span className="text-white font-bold">{totalPool} pts</span></div>
+        <div className="text-green-700 text-lg">Total Pool: <span className="text-gray-900 font-bold">{totalPool} pts</span></div>
       </div>
 
       {/* Winners */}
-      <div className="bg-green-900/30 border border-green-600 rounded-xl p-4 mb-4">
-        <h2 className="text-green-400 font-bold pixel-text mb-3">WINNERS</h2>
+      <div className="bg-white border-2 border-green-600 rounded-xl p-4 mb-4 shadow-sm">
+        <h2 className="font-bold pixel-text mb-3" style={{ color: '#1b4332' }}>WINNERS</h2>
         {winnerPlayers.length === 0 ? (
-          <p className="text-gray-400 text-sm">No winners — pool refunded equally</p>
+          <p className="text-gray-500 text-sm">No winners — pool refunded equally</p>
         ) : (
           <div className="flex flex-col gap-2">
             {winnerPlayers.map(p => {
               const payout = payouts[p.id];
               const gotBonus = remainderInfo?.bonusRecipients?.some(r => r.playerId === p.id);
               return (
-                <div key={p.id} className="flex items-center justify-between bg-green-900/40 rounded-lg px-3 py-2">
-                  <span className="text-white font-bold">{p.name}</span>
+                <div key={p.id} className="flex items-center justify-between bg-green-50 rounded-lg px-3 py-2">
+                  <span className="text-gray-900 font-bold">{p.name}</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-green-400 font-bold">+{payout} pts</span>
-                    {gotBonus && <span className="text-yellow-400 text-xs">(+1 bonus)</span>}
+                    <span className="font-bold net-positive">+{payout} pts</span>
+                    {gotBonus && <span className="text-yellow-600 text-xs">(+1 bonus)</span>}
                   </div>
                 </div>
               );
             })}
             {remainderInfo && remainderInfo.remainder > 0 && (
-              <p className="text-xs text-yellow-300 mt-1">
+              <p className="text-xs text-yellow-700 mt-1">
                 Remainder of {remainderInfo.remainder} pt(s) distributed to earliest-ready winners
               </p>
             )}
@@ -137,13 +143,13 @@ export default function VictoryPage() {
       </div>
 
       {/* All players & net */}
-      <div className="bg-purple-900/30 border border-purple-700 rounded-xl p-4 mb-4">
-        <h2 className="text-purple-300 font-bold pixel-text mb-3">SESSION NET</h2>
+      <div className="bg-white border border-green-300 rounded-xl p-4 mb-4 shadow-sm">
+        <h2 className="text-green-800 font-bold pixel-text mb-3">SESSION NET</h2>
         {players.map(p => {
           const net = p.net_points;
           return (
             <div key={p.id} className="flex items-center justify-between py-1">
-              <span className="text-white">{p.name}</span>
+              <span className="text-gray-900">{p.name}</span>
               <span className={`font-bold font-mono ${net > 0 ? 'net-positive' : net < 0 ? 'net-negative' : 'net-zero'}`}>
                 {net > 0 ? '+' : ''}{net}
               </span>
@@ -158,19 +164,20 @@ export default function VictoryPage() {
           <button
             onClick={handleBackToLobby}
             disabled={returning}
-            className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-black font-bold py-4 rounded-xl text-lg pixel-text transition-all"
+            className="w-full font-bold py-4 rounded-xl text-lg pixel-text transition-all disabled:opacity-50 hover:opacity-90"
+            style={{ background: '#c9a627', color: '#1b4332' }}
           >
             {returning ? '⏳ RETURNING...' : 'BACK TO LOBBY'}
           </button>
           <button
             onClick={handleEndSession}
-            className="w-full bg-red-700 hover:bg-red-600 text-white font-bold py-3 rounded-xl pixel-text transition-all border border-red-500"
+            className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl pixel-text transition-all border border-red-400"
           >
             END SESSION & SETTLE
           </button>
         </div>
       ) : (
-        <p className="text-center text-purple-400 pixel-text">Waiting for host to continue...</p>
+        <p className="text-center text-green-700 pixel-text">Waiting for host to continue...</p>
       )}
     </div>
   );

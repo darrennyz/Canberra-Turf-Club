@@ -73,14 +73,17 @@ export default function ChatOverlay({ sessionCode, playerId, playerName }: Props
         {messages.map((msg, i) => (
           <div
             key={msg.id}
-            className="chat-message-float absolute bg-black/70 text-white text-sm px-3 py-1 rounded-full border border-purple-500/50 whitespace-nowrap"
+            className="chat-message-float absolute text-sm px-3 py-1 rounded-full whitespace-nowrap"
             style={{
+              background: 'rgba(27, 67, 50, 0.88)',
+              border: '1px solid rgba(82, 183, 136, 0.6)',
+              color: '#fff',
               right: 0,
               top: `${15 + (i % 8) * 10}%`,
               pointerEvents: 'none',
             }}
           >
-            <span className="text-purple-300 font-bold">{msg.player_name}:</span> {msg.message}
+            <span className="font-bold" style={{ color: '#86efac' }}>{msg.player_name}:</span> {msg.message}
           </div>
         ))}
       </div>
@@ -93,11 +96,16 @@ export default function ChatOverlay({ sessionCode, playerId, playerName }: Props
           onChange={e => setInput(e.target.value.slice(0, 80))}
           onKeyDown={e => e.key === 'Enter' && sendMessage()}
           placeholder="Chat..."
-          className="bg-black/70 border border-purple-600 rounded-full px-4 py-2 text-white text-sm w-48 focus:outline-none focus:border-yellow-400"
+          className="rounded-full px-4 py-2 text-white text-sm w-48 focus:outline-none"
+          style={{
+            background: 'rgba(27, 67, 50, 0.9)',
+            border: '1px solid #52b788',
+          }}
         />
         <button
           onClick={sendMessage}
-          className="bg-purple-700/80 hover:bg-purple-600 text-white text-sm px-4 py-2 rounded-full border border-purple-500"
+          className="text-white text-sm px-4 py-2 rounded-full hover:opacity-80 transition-opacity"
+          style={{ background: 'rgba(27, 67, 50, 0.9)', border: '1px solid #52b788' }}
         >
           Send
         </button>
